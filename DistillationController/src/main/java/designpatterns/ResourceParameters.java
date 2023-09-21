@@ -70,10 +70,10 @@ public class ResourceParameters {
 
 	/** The minimum storage capacity. */
 	double minimumStorageCapacity; 
-	
+
 	/** The unit conversion factor storage. */
 	double unitConversionFactorStorage = 1; 
-
+	
 	/** The inital capacity. */
 	double initalCapacity; 
 	
@@ -308,6 +308,32 @@ public class ResourceParameters {
 		state.setMaxRampOutput(maxRampStateOutput);
 		this.systemStates.add(state);
 	}
+	
+	/**
+	 * Adds the system state for storage, input is equal to sum output.
+	 *
+	 * @param stateID the state ID
+	 * @param stateName the state name
+	 * @param minHoldingDuration the min holding duration
+	 * @param maxHoldingDuration the max holding duration
+	 * @param idsOfFollowerStates the ids of follower states
+	 * @param minPowerState the min power state
+	 * @param maxPowerState the max power state
+	 * @param inputIsEqualToOutput the input is equal to output
+	 */
+	public void addSystemStateStorageEqualInputOutput (int stateID, String stateName, double minHoldingDuration, double maxHoldingDuration, int[] idsOfFollowerStates, double minPowerState, double maxPowerState, boolean inputIsEqualToOutput) {
+		SystemState state = new SystemState();
+		state.setStateID(stateID);
+		state.setStateName(stateName);
+		state.setMinStateDuration(minHoldingDuration);
+		state.setMaxStateDuration(maxHoldingDuration);
+		state.setFollowerStates(idsOfFollowerStates);
+		state.setMinPower(minPowerState);
+		state.setMaxPower(maxPowerState);
+		state.setInputIsEqualToOutput(inputIsEqualToOutput);
+		this.systemStates.add(state);
+	}
+	
 	/**
 	 * Gets the min power.
 	 *
@@ -870,6 +896,8 @@ public class ResourceParameters {
 
 
 	/**
+	 * Gets the capacity target.
+	 *
 	 * @return the capacityTarget
 	 */
 	public double getCapacityTarget() {
@@ -888,6 +916,8 @@ public class ResourceParameters {
 
 
 	/**
+	 * Gets the capacity target comparator.
+	 *
 	 * @return the capacityTargetComparator
 	 */
 	public String getCapacityTargetComparator() {
@@ -914,8 +944,6 @@ public class ResourceParameters {
 
 
 	/**
-	 * Sets the unit conversion factor storage f -> SOC[i] = SOC[i-1] + f(P_in*eta*t-Pout/eta*t-Ploss).
-	 *
 	 * @param unitConversionFactorStorage the unitConversionFactorStorage to set
 	 */
 	public void setUnitConversionFactorStorage(double unitConversionFactorStorage) {

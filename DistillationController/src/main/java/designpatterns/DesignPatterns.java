@@ -34,7 +34,7 @@ public class DesignPatterns {
 	static double timeInterval; 
 
 	/** The optimality gap. */
-	static double optimalityGap = 0.001; // default 10e-4
+	static double optimalityGap = 0.0001; // default 10e-4
 
 	/** The nolimit. */
 	static final double NOLIMIT = 9999;
@@ -290,6 +290,7 @@ public class DesignPatterns {
 				getDecisionVariablesVector().put(nameOfStorage+"-"+OUTPUT+"-"+POWER, powerOutputStorage);
 				//				System.out.println("power output variable "+ nameOfStorage);
 
+
 				if (resourceParameters.get(indexOfStorage).getNumberOfSystemStates()!=0) {
 					// only create decision variable, if necessary
 					IloIntVar[][] statesIntArrayResource = new IloIntVar[getArrayLength()+1][resourceParameters.get(indexOfStorage).getNumberOfSystemStates()];
@@ -299,9 +300,8 @@ public class DesignPatterns {
 						}
 					}
 					getDecisionVariablesMatrix().put(nameOfStorage+"-"+POWER+"-"+STATE, statesIntArrayResource);
-					//				System.out.println("state variable "+ nameOfStorage);
+					//				System.out.println("state variable "+ nameOfResource);
 				}
-
 			}
 			System.out.println("Created variables for "+ nameOfStorage);
 		}
@@ -521,10 +521,26 @@ public class DesignPatterns {
 		return -1; // Return -1 if name not found
 	}
 
+	/**
+	 * Gets the decision variable from vector.
+	 *
+	 * @param name the name
+	 * @param port the port
+	 * @param medium the medium
+	 * @return the decision variable from vector
+	 */
 	public static IloNumVar[] getDecisionVariableFromVector(String name, String port, String medium) {
 		return getDecisionVariablesVector().get(name+"-"+port+"-"+medium);
 	}
 
+	/**
+	 * Gets the decision variable from matrix.
+	 *
+	 * @param name the name
+	 * @param medium the medium
+	 * @param type the type
+	 * @return the decision variable from matrix
+	 */
 	public static IloNumVar[][] getDecisionVariableFromMatrix(String name, String medium, String type) {
 		return getDecisionVariablesMatrix().get(name+"-"+medium+"-"+type);
 	}
@@ -604,7 +620,8 @@ public class DesignPatterns {
 							);
 
 					// sum binaries[i] = 1 part 2
-					binarySum = getCplex().sum(binarySum,binariesPlaResource[plaSegment][timestep]);
+					binarySum = getCplex().sum(binarySum,(IloIntVar) getDecisionVariableFromMatrix(nameOfResource, POWER, BINARY)[plaSegment][timestep]);
+					//					binarySum = getCplex().sum(binarySum,binariesPlaResource[plaSegment][timestep]);
 					powerInputSum = getCplex().sum(powerInputSum, powerInputResourceLinearSegments[plaSegment][timestep]);
 				}
 
@@ -626,8 +643,9 @@ public class DesignPatterns {
 											getCplex().sum(
 													resourceParameters.get(indexOfResource).getPla().get(plasegment).getIntercept(),
 													getCplex().prod(
-															powerInputSum,
-															//															powerInputResourceLinearSegments[plasegment][timestep],
+															//powerInputSum,
+															powerInputResource[timestep],
+															//powerInputResourceLinearSegments[plasegment][timestep],
 															resourceParameters.get(indexOfResource).getPla().get(plasegment).getSlope()
 															)
 													)
@@ -703,6 +721,7 @@ public class DesignPatterns {
 		else {
 			// Create system states for storage by SOC
 
+			IloNumVar[] powerInputResource = getDecisionVariableFromVector(nameOfResource, INPUT, POWER);
 			IloNumVar[] powerOutputResource  = getDecisionVariableFromVector(nameOfResource, OUTPUT, POWER);
 			IloNumVar[] stateOfChargeResource  = getDecisionVariableFromVector(nameOfResource, SOC, POWER);
 			IloIntVar[][] statesIntArrayResource = (IloIntVar[][]) getDecisionVariableFromMatrix(nameOfResource, POWER, STATE);
@@ -914,6 +933,7 @@ public class DesignPatterns {
 						getCplex().sum(
 								stateOfCharge[timestep-1],
 								getCplex().prod(resourceParameters.get(indexOfResource).getUnitConversionFactorStorage(),
+										// Hier Unit Conversion einfügen
 										getCplex().diff(
 												getCplex().prod(powerInputStorage[timestep-1], resourceParameters.get(indexOfResource).getEfficiencyInputStorage()*getTimeInterval()),
 												getCplex().sum(
@@ -922,10 +942,15 @@ public class DesignPatterns {
 																resourceParameters.get(indexOfResource).getStaticEnergyLoss()*getTimeInterval()
 																), 
 														getCplex().prod(
-																0.5*resourceParameters.get(indexOfResource).getDynamicEnergyLoss()*getTimeInterval(), 
-																getCplex().sum(
+																resourceParameters.get(indexOfResource).getDynamicEnergyLoss()*getTimeInterval(), 
+																getCplex().diff(
 																		resourceParameters.get(indexOfResource).getReferenceDynamicEnergyLoss(),
-																		stateOfCharge[timestep]
+																		getCplex().prod(0.5, 
+																				getCplex().sum(														
+																						stateOfCharge[timestep], 
+																						stateOfCharge[timestep-1]
+																						)
+																				)
 																		)
 																)
 														)
@@ -933,6 +958,48 @@ public class DesignPatterns {
 										)
 								)
 						);
+
+				if (getResourceParameters().get(indexOfResource).getNumberOfSystemStates()!=0) {
+					for (int state = 0; state < getResourceParameters().get(indexOfResource).getNumberOfSystemStates(); state++) {
+						if (getResourceParameters().get(indexOfResource).getSystemStates().get(state).isInputIsEqualToOutput()==true) {
+							getCplex().add(
+									getCplex().ifThen(									
+											getCplex().eq(
+													getDecisionVariableFromMatrix(nameOfResource, POWER, STATE)[timestep][state], 
+													1
+													),
+											getCplex().eq(
+													getCplex().prod(
+															powerInputStorage[timestep-1], 
+															resourceParameters.get(indexOfResource).getEfficiencyInputStorage()*getTimeInterval()
+															),
+													getCplex().sum(
+															getCplex().sum(
+																	getCplex().prod(
+																			powerOutputStorage[timestep-1],
+																			resourceParameters.get(indexOfResource).getEfficiencyOutputReciprocal()*getTimeInterval()
+																			),
+																	resourceParameters.get(indexOfResource).getStaticEnergyLoss()*getTimeInterval()
+																	), 
+															getCplex().prod(
+																	resourceParameters.get(indexOfResource).getDynamicEnergyLoss()*getTimeInterval(), 
+																	getCplex().diff(
+																			resourceParameters.get(indexOfResource).getReferenceDynamicEnergyLoss(),
+																			getCplex().prod(0.5, 
+																					getCplex().sum(														
+																							stateOfCharge[timestep], 
+																							stateOfCharge[timestep-1]
+																							)
+																					)
+																			)
+																	)
+															)
+													)
+											)
+									);
+						}
+					}
+				}
 			}
 		}
 		if (resourceParameters.get(indexOfResource).getCapacityTarget()!=-1) {
@@ -1056,14 +1123,19 @@ public class DesignPatterns {
 	 * @return the electricity price
 	 */
 	public static double[] getElectricityPrice() {
-		double[] electricityPrice = new double[] {
-				85.87,37.21,32.62,32.27,51.03,63.76,44.84,39.2,58.28,43.46,42.47,47.48, 58.96,42.99,43.27,50.5,
-				80.21,30.64,21.47,35.41,15.67,24.15,43.98,55.36,23.58,42.56,60.2,87.49,22.46,38.95,	31.68,60.19,
-				17.49,37.23,40.51,57.98,46.62,46.74,61.23,71.33,57.2,55.6,59.39,81.35,48.79,58.3,58.01,57.73,71.85,
-				64.5,57.07,57.84,44.25,38.6,65.02,67.76,42.31,62.06,83.36,100.31,57.25,66.51,84.52,95.44,73.57,84.5,
-				85.41,98.72,75.05,98.16,101.62,96.88,127.03,92.24,102.1,79.11,140.98,93.1,91.67,66.07,125.87,89.96,
-				76.41,48.12,100.5,74.96,74.03,64.77,100.75,75.26,87.21,38.04,85.35,60.38,56.9,35.95
-		};
+//		double[] electricityPrice = new double[] {
+//				85.87,37.21,32.62,32.27,51.03,63.76,44.84,39.2,58.28,43.46,42.47,47.48, 58.96,42.99,43.27,50.5,
+//				80.21,30.64,21.47,35.41,15.67,24.15,43.98,55.36,23.58,42.56,60.2,87.49,22.46,38.95,	31.68,60.19,
+//				17.49,37.23,40.51,57.98,46.62,46.74,61.23,71.33,57.2,55.6,59.39,81.35,48.79,58.3,58.01,57.73,71.85,
+//				64.5,57.07,57.84,44.25,38.6,65.02,67.76,42.31,62.06,83.36,100.31,57.25,66.51,84.52,95.44,73.57,84.5,
+//				85.41,98.72,75.05,98.16,101.62,96.88,127.03,92.24,102.1,79.11,140.98,93.1,91.67,66.07,125.87,89.96,
+//				76.41,48.12,100.5,74.96,74.03,64.77,100.75,75.26,87.21,38.04,85.35,60.38,56.9,35.95
+//		};
+		
+		double[] electricityPrice = new double[] { -19.99,-11.59,-10,7.33,-6,-5.01,-5,30,1,10,149.1,190,132.5,69.99,
+				-10,-3,-5.5,-5,-14.1,144.1,80,50,75.45,70 } ;
+
+		
 		double[] electricityPriceNew = new double[getArrayLength()];
 
 
@@ -1082,7 +1154,23 @@ public class DesignPatterns {
 			return electricityPriceNew; 
 		}
 	}
+	
+	public static double[] convertPriceToArbitrayIntervals (double[] price, int newLengthInMinutes) {
 
+		int arrayLengthOld = price.length;
+		int multiplier = 15/newLengthInMinutes;
+		int arrayLengthNew = multiplier*arrayLengthOld;
+		double[] longPrice = new double[arrayLengthNew];
+
+		int counter = 0; 
+		for (int i = 0; i < arrayLengthOld; i++) {
+			for (int k = 0; k < multiplier; k++) {
+				longPrice[counter] = price[i];
+				counter++; 
+			}
+		}
+		return longPrice;
+	}
 	/**
 	 * Write results to file.
 	 *
@@ -1094,20 +1182,38 @@ public class DesignPatterns {
 		String date = Double.toString(System.currentTimeMillis());
 		try {
 			//	double currentTime = System.currentTimeMillis(); 
-			FileWriter myWriter = new FileWriter("C:/Users/Wagner/OneDrive - Helmut-Schmidt-Universität/Papers/Oncon2023/results/"+fileName+date+".csv");
-			myWriter.write("id;"+header);
-			myWriter.write("\n");
-			for (int i = 0; i < contentToWrite.length; i++) {
-				myWriter.write(Double.toString(i).replace(".", ","));
-				for(int j = 0; j < contentToWrite[0].length; j++) {
-					myWriter.write(";"); // Use semicolon as separator
-					//myWriter.write(Double.toString(contentToWrite[i][j]));
-					myWriter.write(Double.toString(contentToWrite[i][j]).replace(".", ",")); // Replace decimal point with comma
-				}
+			try {
+				FileWriter myWriter = new FileWriter("C:/Users/Wagner/OneDrive - Helmut-Schmidt-Universität/Papers/Oncon_Labortest/optResults/"+fileName+date+".csv");
+						myWriter.write("id;"+header);
 				myWriter.write("\n");
+				for (int i = 0; i < contentToWrite.length; i++) {
+					myWriter.write(Double.toString(i).replace(".", ","));
+					for(int j = 0; j < contentToWrite[0].length; j++) {
+						myWriter.write(";"); // Use semicolon as separator
+						//myWriter.write(Double.toString(contentToWrite[i][j]));
+						myWriter.write(Double.toString(contentToWrite[i][j]).replace(".", ",")); // Replace decimal point with comma
+					}
+					myWriter.write("\n");
+				}
+				myWriter.close();
+				System.out.println("Successfully wrote data to the file "+ fileName+".csv.");
+			} catch (Exception e) {
+				FileWriter myWriter = new FileWriter("C:/Users/Reinpold/Documents/OneDrive - Helmut-Schmidt-Universität/General/Labortest_ONCON/"+fileName+date+".csv");
+						myWriter.write("id;"+header);
+				myWriter.write("\n");
+				for (int i = 0; i < contentToWrite.length; i++) {
+					myWriter.write(Double.toString(i).replace(".", ","));
+					for(int j = 0; j < contentToWrite[0].length; j++) {
+						myWriter.write(";"); // Use semicolon as separator
+						//myWriter.write(Double.toString(contentToWrite[i][j]));
+						myWriter.write(Double.toString(contentToWrite[i][j]).replace(".", ",")); // Replace decimal point with comma
+					}
+					myWriter.write("\n");
+				}
+				myWriter.close();
+				System.out.println("Successfully wrote data to the file "+ fileName+".csv.");
 			}
-			myWriter.close();
-			System.out.println("Successfully wrote data to the file "+ fileName+".csv.");
+
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
